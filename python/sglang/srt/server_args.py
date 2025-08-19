@@ -29,6 +29,7 @@ import orjson
 from sglang.srt.connector import ConnectorType
 from sglang.srt.environ import ToolStrictLevel, envs
 from sglang.srt.function_call.function_call_parser import FunctionCallParser
+from sglang.srt.layers.afd_type import AFDPerspective, parse_afd_micro_batch
 from sglang.srt.lora.lora_registry import LoRARef
 from sglang.srt.parser.reasoning_parser import ReasoningParser
 from sglang.srt.utils.common import (
@@ -612,6 +613,10 @@ class ServerArgs:
 
     # For forward hooks
     forward_hooks: Optional[List[dict[str, Any]]] = None
+
+    # For AF disaggregation
+    afd_perspective: Optional[AFDPerspective] = None
+    afd_mirco_batch: int = 3
 
     def __post_init__(self):
         """
@@ -4007,6 +4012,28 @@ class ServerArgs:
             type=json_list_type,
             default=ServerArgs.forward_hooks,
             help="JSON-formatted forward hook specifications to attach to the model.",
+        )
+
+        #For AF disaggregation
+        parser.add_argument(
+            "--afd-perspective",
+            type=AFDPerspective,
+            choices=list(AFDPerspective),
+            default=ServerArgs.afd_perspective,
+            help=(
+                "Set the AF disaggregation perspective. "
+                f"(choices: %(choices)s, default: {ServerArgs.afd_perspective})"
+            )
+        )
+        parser.add_argument(
+            "--afd-mirco-batch",
+            type=parse_afd_micro_batch,
+            default=ServerArgs.afd_mirco_batch,
+            help=(
+                "Set the micro batch size for AF disaggregation. "
+                f"Must be an integer >= 3. "
+                f"(default: {ServerArgs.afd_mirco_batch,})"
+            )
         )
 
     @classmethod

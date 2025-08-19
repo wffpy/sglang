@@ -363,6 +363,9 @@ class ForwardBatch:
     # Record the split metadata of the sequence number of NSA context parallels.
     nsa_cp_metadata: Optional[NSAContextParallelMetadata] = None
 
+    # For AF disaggregation
+    can_run_afd_overlap: bool = False
+
     @classmethod
     def init_new(
         cls,
