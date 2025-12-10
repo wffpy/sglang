@@ -586,6 +586,15 @@ class ServerArgs:
     # FIXME: hack to reduce ITL when decode bs is small
     disaggregation_decode_polling_interval: int = 1
 
+    # AF separation: can be "null" (not separated), "attention" (attention-only), or "feedforward" (feedforward-only)
+    attention_feedforward_separation_mode: Literal["null", "attention", "feedforward"] = "null"
+    attention_feedforward_separation_transfer_backend: str = "mooncake"
+    attention_feedforward_separation_bootstrap_port: int = 8999
+    attention_feedforward_separation_feedforward_tp: Optional[int] = None
+    attention_feedforward_separation_feedforward_dp: Optional[int] = None
+    attention_feedforward_separation_attention_pp: Optional[int] = 1
+    attention_feedforward_separation_ib_device: Optional[str] = None
+
     # For model weight update and weight loading
     custom_weight_loader: Optional[List[str]] = None
     weight_loader_disable_mmap: bool = False
@@ -672,6 +681,7 @@ class ServerArgs:
 
         # Handle PD disaggregation.
         self._handle_disaggregation()
+        self._handle_attention_feedforward_separation()
 
         # Validate tokenizer settings.
         self._handle_tokenizer_batching()
@@ -1898,6 +1908,23 @@ class ServerArgs:
                 self.disaggregation_decode_dp = self.dp_size
 
             self.disaggregation_prefill_pp = self.pp_size
+
+    def _handle_attention_feedforward_separation(self):
+        if self.attention_feedforward_separation_mode == "feedforward":
+            assert (
+                self.attention_feedforward_separation_feedforward_tp is None
+            ), "Cannot set --attention-feedforward-separation-feedforward-tp for the feedforward engine."
+            assert (
+                self.attention_feedforward_separation_feedforward_dp is None
+            ), "Cannot set --attention-feedforward-separation-feedforward-dp for the feedforward engine."
+
+        elif self.attention_feedforward_separation_mode == "attention":
+            if self.attention_feedforward_separation_feedforward_tp is None:
+                self.attention_feedforward_separation_feedforward_tp = self.tp_size
+            if self.attention_feedforward_separation_feedforward_dp is None:
+                self.attention_feedforward_separation_feedforward_dp = self.dp_size
+
+            self.attention_feedforward_separation_attention_pp = self.pp_size
             self.validate_disagg_tp_size(self.tp_size, self.disaggregation_decode_tp)
 
             if not self.enable_piecewise_cuda_graph:
@@ -3871,6 +3898,53 @@ class ServerArgs:
             default=ServerArgs.disaggregation_decode_dp,
             help="Decode dp size. If not set, it matches the dp size of the current engine. This is only set on the prefill server.",
         )
+
+        # AF separation
+        parser.add_argument(
+            "--attention-feedforward-separation-mode",
+            type=str,
+            default=ServerArgs.attention_feedforward_separation_mode,
+            choices=["null", "attention", "feedforward"],
+            help='Only used for AF separation. "attention" for attention-only server, and "feedforward" for feedforward-only server. If not specified, it is not AF separated',
+        )
+        parser.add_argument(
+            "--attention-feedforward-separation-transfer-backend",
+            type=str,
+            default=ServerArgs.attention_feedforward_separation_transfer_backend,
+            choices=DISAGG_TRANSFER_BACKEND_CHOICES,
+            help="The backend for AF separation transfer. Default is mooncake.",
+        )
+        parser.add_argument(
+            "--attention-feedforward-separation-bootstrap-port",
+            type=int,
+            default=ServerArgs.attention_feedforward_separation_bootstrap_port,
+            help="Bootstrap server port on the attention server. Default is 8999.",
+        )
+        parser.add_argument(
+            "--attention-feedforward-separation-feedforward-tp",
+            type=int,
+            default=ServerArgs.attention_feedforward_separation_feedforward_tp,
+            help="Feedforward tp size. If not set, it matches the tp size of the current engine. This is only set on the attention server.",
+        )
+        parser.add_argument(
+            "--attention-feedforward-separation-feedforward-dp",
+            type=int,
+            default=ServerArgs.attention_feedforward_separation_feedforward_dp,
+            help="Feedforward dp size. If not set, it matches the dp size of the current engine. This is only set on the attention server.",
+        )
+        parser.add_argument(
+            "--attention-feedforward-separation-attention-pp",
+            type=int,
+            default=ServerArgs.attention_feedforward_separation_attention_pp,
+            help="Attention pp size. Default is 1.",
+        )
+        # parser.add_argument(
+        #     "--attention-feedforward-separation-ib-device",
+        #     type=str,
+        #     default=ServerArgs.attention_feedforward_separation_ib_device,
+        #     help="InfiniBand device for AF separation transfer. If not set, it will be auto-detected.",
+        # )
+
         parser.add_argument(
             "--disaggregation-prefill-pp",
             type=int,

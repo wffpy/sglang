@@ -363,6 +363,18 @@ class ForwardBatch:
     # Record the split metadata of the sequence number of NSA context parallels.
     nsa_cp_metadata: Optional[NSAContextParallelMetadata] = None
 
+    # For Attention/Feedforward separation (AFD)
+    # Indicates which computation path to take: "attention", "feedforward", or None (both)
+    afd_computation_path: Optional[str] = None
+    # Whether this batch is running on an attention-only node
+    afd_is_attention_node: bool = False
+    # Whether this batch is running on a feedforward-only node
+    afd_is_feedforward_node: bool = False
+    # Intermediate hidden states for AFD communication (from attention to feedforward)
+    afd_hidden_states: Optional[torch.Tensor] = None
+    # Residual connection states for AFD
+    afd_residual: Optional[torch.Tensor] = None
+
     @classmethod
     def init_new(
         cls,
@@ -500,6 +512,28 @@ class ForwardBatch:
         # Init lora information
         if model_runner.server_args.enable_lora:
             model_runner.lora_manager.prepare_lora_batch(ret)
+
+        # Init AFD (Attention/Feedforward separation) parameters
+        afd_mode = model_runner.server_args.attention_feedforward_separation_mode
+        if afd_mode != "null":
+            if afd_mode == "attention":
+                ret.afd_computation_path = "attention"
+                ret.afd_is_attention_node = True
+                ret.afd_is_feedforward_node = False
+            elif afd_mode == "feedforward":
+                ret.afd_computation_path = "feedforward"
+                ret.afd_is_attention_node = False
+                ret.afd_is_feedforward_node = True
+            else:
+                # Default to None if mode is invalid
+                ret.afd_computation_path = None
+                ret.afd_is_attention_node = False
+                ret.afd_is_feedforward_node = False
+        else:
+            # AFD is disabled
+            ret.afd_computation_path = None
+            ret.afd_is_attention_node = False
+            ret.afd_is_feedforward_node = False
 
         return ret
 
